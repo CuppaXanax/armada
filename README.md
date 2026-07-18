@@ -39,6 +39,7 @@ Includes:
 | AYN Odin 2 | SM8550 | ✅ Tested |
 | AYN Thor | SM8550 | ✅ Tested |
 | AYN Odin 3 | SM8750 | ✅ Tested |
+| Retroid Pocket 5 | SM8250 | ⚪ Untested |
 | Retroid Pocket 6 | SM8550 | ✅ Tested |
 | KONKR Pocket FIT (G3 Gen 3) | SM8650 | ✅ Tested |
 | AYANEO Pocket S2 | SM8650 | ✅ Tested |
@@ -66,9 +67,10 @@ internal storage so it boots without the card (see
      `SM8750`). Flashing the wrong SoC's ABL can brick the device, so match it
      carefully.
    - Using your device's built-in "run script as root" tool, browse to your SoC's
-     subfolder (e.g. `rocknix_abl/SM8550`) and run `backup_abl.sh`.
-   - Copy the backup (`abl_a.img` and `abl_b.img`, written into your SoC subfolder)
-     to your PC for safekeeping.
+     subfolder (e.g. `rocknix_abl/SM8250`) and run `backup_abl.sh`.
+   - Copy the backups and checksums (`abl_a.img*` and `abl_b.img*`, written into
+     your SoC subfolder) to your PC for safekeeping. The flash script will refuse
+     to continue unless both backups and the signed ABL verify successfully.
    - Run `flash_abl.sh` the same way to flash the new ABL.
 
 3. Boot from SD and set your device model and boot mode.

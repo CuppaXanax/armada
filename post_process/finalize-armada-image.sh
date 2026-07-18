@@ -4,7 +4,8 @@
 set -euxo pipefail
 
 RAW_IMAGE="${1:-output/raw/disk.raw}"
-ROCKNIX_ABL_VERSION="${ROCKNIX_ABL_VERSION:-v1.1.5}"
+ROCKNIX_ABL_VERSION="${ROCKNIX_ABL_VERSION:-v1.1.4}"
+ROCKNIX_ABL_ARCHIVE="${ROCKNIX_ABL_ARCHIVE:-}"
 OUT="${OUT:-output/armada-$(TZ='America/New_York' date +%Y%m%d).img.gz}"
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -17,10 +18,20 @@ fi
 WORK=$(mktemp -d)
 trap "sudo umount '${WORK}/mnt' 2>/dev/null || true; sudo losetup -d \"\$(cat ${WORK}/loop 2>/dev/null)\" 2>/dev/null || true; rm -rf '${WORK}'" EXIT
 
-curl -fsSL -o "${WORK}/abl.tar.gz" \
-    "https://github.com/ROCKNIX/abl/releases/download/${ROCKNIX_ABL_VERSION}/rocknix-abl-${ROCKNIX_ABL_VERSION}.tar.gz"
+if [[ -n "${ROCKNIX_ABL_ARCHIVE}" ]]; then
+    [[ -f "${ROCKNIX_ABL_ARCHIVE}" ]] \
+        || { echo "ERROR: ABL archive not found: ${ROCKNIX_ABL_ARCHIVE}"; exit 1; }
+    cp "${ROCKNIX_ABL_ARCHIVE}" "${WORK}/abl.tar.gz"
+else
+    curl -fsSL -o "${WORK}/abl.tar.gz" \
+        "https://github.com/ROCKNIX/abl/releases/download/${ROCKNIX_ABL_VERSION}/rocknix-abl-${ROCKNIX_ABL_VERSION}.tar.gz"
+fi
 mkdir -p "${WORK}/abl-extracted"
 tar -xzf "${WORK}/abl.tar.gz" -C "${WORK}/abl-extracted"
+ABL_SRC=$(ls -d "${WORK}/abl-extracted"/rocknix-abl-*)
+for soc in SM8250 SM8550 SM8650 SM8750; do
+    (cd "${ABL_SRC}" && sha256sum -c "abl_signed-${soc}.elf.sha256")
+done
 
 LOOP=$(sudo losetup -fP --show "${RAW_IMAGE}")
 echo "${LOOP}" > "${WORK}/loop"
@@ -39,9 +50,8 @@ sudo mount "${ESP}" "${WORK}/mnt"
 sudo mkdir -p "${WORK}/mnt/rocknix_abl"
 # One image serves all devices, so stage a self-contained folder per SoC.
 # vfat has no Unix ownership, so `cp -a` would error on chown under set -e.
-ABL_SRC=$(ls -d "${WORK}/abl-extracted"/rocknix-abl-*)
 sudo cp "${REPO_ROOT}/abl/README" "${WORK}/mnt/rocknix_abl/README"
-for soc in SM8550 SM8650 SM8750; do
+for soc in SM8250 SM8550 SM8650 SM8750; do
     d="${WORK}/mnt/rocknix_abl/${soc}"
     sudo mkdir -p "$d"
     sudo cp "${ABL_SRC}/abl_signed-${soc}.elf" "${ABL_SRC}/abl_signed-${soc}.elf.sha256" "$d/"

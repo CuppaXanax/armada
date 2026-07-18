@@ -2,5 +2,31 @@
 # SPDX-License-Identifier: GPL-2.0
 # From ROCKNIX (https://github.com/ROCKNIX/abl), (c) ROCKNIX contributors.
 
-dd if="/sdcard/rocknix_abl/%DEVICE%/abl_signed-%DEVICE%.elf" of=/dev/block/by-name/abl_a bs=1M
-dd if="/sdcard/rocknix_abl/%DEVICE%/abl_signed-%DEVICE%.elf" of=/dev/block/by-name/abl_b bs=1M
+set -eu
+
+dir="/sdcard/rocknix_abl/%DEVICE%"
+image="${dir}/abl_signed-%DEVICE%.elf"
+checksum="${image}.sha256"
+
+[ -s "${image}" ] || { echo "ERROR: signed %DEVICE% ABL is missing" >&2; exit 1; }
+[ -s "${checksum}" ] || { echo "ERROR: signed ABL checksum is missing" >&2; exit 1; }
+(cd "${dir}" && sha256sum -c "$(basename "${checksum}")")
+
+for slot in a b; do
+	backup="${dir}/abl_${slot}.img"
+	[ -s "${backup}" ] || { echo "ERROR: ${backup} is missing; run backup_abl.sh first" >&2; exit 1; }
+	(cd "${dir}" && sha256sum -c "abl_${slot}.img.sha256")
+done
+
+for slot in a b; do
+	target="/dev/block/by-name/abl_${slot}"
+	[ -w "${target}" ] || { echo "ERROR: cannot write ${target}" >&2; exit 1; }
+done
+
+for slot in a b; do
+	target="/dev/block/by-name/abl_${slot}"
+	dd if="${image}" of="${target}" bs=1M
+done
+
+sync
+echo "Verified %DEVICE% ABL written to both slots. Reboot while holding VOL- to enter the ABL menu."

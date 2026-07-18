@@ -1,0 +1,12 @@
+# From ROCKNIX projects/ROCKNIX/devices/SM8250/config/kernel-firmware.dat.
+# Globs are verified against /usr/lib/firmware during the container build.
+qcom/a650_gmu.bin
+qcom/a650_sqe.fw
+qcom/sm8250/a650_zap.mbn
+qcom/sm8250/adsp.mbn
+qcom/sm8250/cdsp.mbn
+qcom/sm8250/slpi*
+qcom/vpu-1.0/venus.mbn
+ath11k/QCA6390/hw2.0/*.bin
+qca/htbtfw20.tlv
+qca/htnv20.bin

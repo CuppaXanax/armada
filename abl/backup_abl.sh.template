@@ -2,5 +2,20 @@
 # SPDX-License-Identifier: GPL-2.0
 # From ROCKNIX (https://github.com/ROCKNIX/abl), (c) ROCKNIX contributors.
 
-dd if=/dev/block/by-name/abl_a of="/sdcard/rocknix_abl/%DEVICE%/abl_a.img" bs=1M
-dd if=/dev/block/by-name/abl_b of="/sdcard/rocknix_abl/%DEVICE%/abl_b.img" bs=1M
+set -eu
+
+dir="/sdcard/rocknix_abl/%DEVICE%"
+umask 077
+
+for slot in a b; do
+	source="/dev/block/by-name/abl_${slot}"
+	output="${dir}/abl_${slot}.img"
+	[ -r "${source}" ] || { echo "ERROR: cannot read ${source}" >&2; exit 1; }
+	[ ! -e "${output}" ] || { echo "ERROR: ${output} already exists; preserve it before retrying" >&2; exit 1; }
+	dd if="${source}" of="${output}" bs=1M
+	[ -s "${output}" ] || { echo "ERROR: backup is empty: ${output}" >&2; exit 1; }
+	sha256sum "${output}" > "${output}.sha256"
+done
+
+sync
+echo "ABL backups complete. Copy abl_a.img, abl_b.img, and their checksums to another computer before flashing."
