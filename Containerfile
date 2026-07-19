@@ -32,6 +32,8 @@ COPY system_files /system_files/
 
 FROM quay.io/fedora/fedora-bootc:44
 ARG ARMADA_VERSION=unknown
+ARG ARMADA_CPU_PROFILE=default
+ENV ARMADA_CPU_PROFILE=${ARMADA_CPU_PROFILE}
 LABEL org.opencontainers.image.version="${ARMADA_VERSION}"
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \

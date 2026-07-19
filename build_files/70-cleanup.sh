@@ -26,21 +26,27 @@ dnf5 -y remove --no-autoremove \
 
 dnf5 -y remove --no-autoremove binutils
 
-for required in qcom-firmware atheros-firmware bootc podman skopeo gamescope gamescope-session fex-emu-utils mangohud; do
+required_packages='qcom-firmware atheros-firmware bootc podman skopeo gamescope gamescope-session mangohud'
+if [[ "${ARMADA_CPU_PROFILE:-default}" != sm8250 ]]; then
+    required_packages+=' fex-emu-utils'
+fi
+for required in ${required_packages}; do
     rpm -q "$required" >/dev/null || { echo "ERROR: $required got removed"; exit 1; }
 done
 
-# The patched Turnip (Mesa #14656 fix) must be the installed one, not stock Fedora.
-case "$(rpm -q --qf '%{release}' mesa-vulkan-drivers)" in
-    *armada*) ;;
-    *) echo "ERROR: stock mesa-vulkan-drivers installed; patched .armada Turnip lost"; exit 1 ;;
-esac
+if [[ "${ARMADA_CPU_PROFILE:-default}" != sm8250 ]]; then
+    # The patched Turnip (Mesa #14656 fix) must be the installed one, not stock Fedora.
+    case "$(rpm -q --qf '%{release}' mesa-vulkan-drivers)" in
+        *armada*) ;;
+        *) echo "ERROR: stock mesa-vulkan-drivers installed; patched .armada Turnip lost"; exit 1 ;;
+    esac
 
-# The patched mangohud (Adreno SM8550 sysfs repoints) must be the installed one.
-case "$(rpm -q --qf '%{release}' mangohud)" in
-    *armada*) ;;
-    *) echo "ERROR: stock mangohud installed; patched .armada mangohud lost"; exit 1 ;;
-esac
+    # The patched mangohud (Adreno SM8550 sysfs repoints) must be the installed one.
+    case "$(rpm -q --qf '%{release}' mangohud)" in
+        *armada*) ;;
+        *) echo "ERROR: stock mangohud installed; patched .armada mangohud lost"; exit 1 ;;
+    esac
+fi
 
 rm -rf \
     /usr/lib/firmware/amdgpu \

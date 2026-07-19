@@ -1,11 +1,22 @@
 #!/bin/bash
 set -euxo pipefail
 
-# Patched Turnip includes the Mesa #14656 VM_BIND fix.
-dnf5 -y install --setopt=install_weak_deps=False /packages/mesa/mesa-*.fc44.armada.*.rpm
+if [[ "${ARMADA_CPU_PROFILE:-default}" == sm8250 ]]; then
+    # The published Armada RPMs require I8MM. Use Fedora's generic ARM64 builds
+    # until the SM8250-tuned package set is available.
+    dnf5 -y install --setopt=install_weak_deps=False \
+        mesa-dri-drivers \
+        mesa-vulkan-drivers \
+        mesa-libGL \
+        mesa-libEGL \
+        mangohud
+else
+    # Patched Turnip includes the Mesa #14656 VM_BIND fix.
+    dnf5 -y install --setopt=install_weak_deps=False /packages/mesa/mesa-*.fc44.armada.*.rpm
 
-# Patched mangohud: Adreno GPU load/clock/temp for mainline drm/msm (msm_dpu).
-dnf5 -y install --setopt=install_weak_deps=False /packages/mangohud/mangohud-*.fc44.armada.*.rpm
+    # Patched mangohud: Adreno GPU load/clock/temp for mainline drm/msm (msm_dpu).
+    dnf5 -y install --setopt=install_weak_deps=False /packages/mangohud/mangohud-*.fc44.armada.*.rpm
+fi
 
 dnf5 -y install --setopt=install_weak_deps=False \
     gamescope \
@@ -17,8 +28,10 @@ dnf5 -y install --setopt=install_weak_deps=False \
     xorg-x11-server-Xwayland \
     xorg-x11-server-Xvfb
 
-# armada-gamescope carries ROCKNIX's --use-rotation-shader patch.
-dnf5 -y install --setopt=install_weak_deps=False /packages/gamescope/gamescope-[0-9]*.aarch64.rpm
+if [[ "${ARMADA_CPU_PROFILE:-default}" != sm8250 ]]; then
+    # armada-gamescope carries ROCKNIX's --use-rotation-shader patch.
+    dnf5 -y install --setopt=install_weak_deps=False /packages/gamescope/gamescope-[0-9]*.aarch64.rpm
+fi
 
 # Patched InputPlumber: dpad signed-axis fix
 dnf5 -y install --setopt=install_weak_deps=False /packages/inputplumber/inputplumber-*.rpm
@@ -33,15 +46,17 @@ dnf5 -y install --setopt=install_weak_deps=False --enable-repo=terra \
     gamescope-session \
     steam-notif-daemon
 
-# ROCKNIX's --use-rotation-shader patch makes this a no-arg flag.
-if ! grep -q 'USE_ROTATION_SHADER_OPTION="--use-rotation-shader $USE_ROTATION_SHADER"' \
-    /usr/share/gamescope-session-plus/gamescope-session-plus; then
-    echo "ERROR: gamescope-session-plus rotation-shader hook changed; inspect before patching" >&2
-    exit 1
+if [[ "${ARMADA_CPU_PROFILE:-default}" != sm8250 ]]; then
+    # ROCKNIX's --use-rotation-shader patch makes this a no-arg flag.
+    if ! grep -q 'USE_ROTATION_SHADER_OPTION="--use-rotation-shader $USE_ROTATION_SHADER"' \
+        /usr/share/gamescope-session-plus/gamescope-session-plus; then
+        echo "ERROR: gamescope-session-plus rotation-shader hook changed; inspect before patching" >&2
+        exit 1
+    fi
+    sed -i \
+        's/USE_ROTATION_SHADER_OPTION="--use-rotation-shader $USE_ROTATION_SHADER"/USE_ROTATION_SHADER_OPTION="--use-rotation-shader"/' \
+        /usr/share/gamescope-session-plus/gamescope-session-plus
 fi
-sed -i \
-    's/USE_ROTATION_SHADER_OPTION="--use-rotation-shader $USE_ROTATION_SHADER"/USE_ROTATION_SHADER_OPTION="--use-rotation-shader"/' \
-    /usr/share/gamescope-session-plus/gamescope-session-plus
 
 # Avoid xtrace spam during every game-mode startup.
 sed -i '/^set -x$/d' /usr/share/gamescope-session-plus/gamescope-session-plus
@@ -59,17 +74,18 @@ dnf5 -y install --setopt=install_weak_deps=False \
     squashfuse \
     squashfs-tools
 
-dnf5 -y install --setopt=install_weak_deps=False /packages/fex/fex-emu-*.rpm
+if [[ "${ARMADA_CPU_PROFILE:-default}" != sm8250 ]]; then
+    dnf5 -y install --setopt=install_weak_deps=False /packages/fex/fex-emu-*.rpm
 
-# Use Arch rootfs for better compatibility with Linux games targeting SteamOS
-mkdir -p /usr/share/fex-emu/RootFS
-ARCH_ROOTFS_URL="https://rootfs.fex-emu.gg/ArchLinux/2026-01-08/ArchLinux.sqsh"
-ARCH_ROOTFS_SHA256="cb059973b7953ad9165845529655189b96f9a174b14a6a149c87ec884b0c5e90"
-curl --retry 3 --retry-delay 2 -fsSL -o /usr/share/fex-emu/RootFS/ArchLinux.sqsh "${ARCH_ROOTFS_URL}"
-echo "${ARCH_ROOTFS_SHA256}  /usr/share/fex-emu/RootFS/ArchLinux.sqsh" | sha256sum -c -
+    # Use Arch rootfs for better compatibility with Linux games targeting SteamOS
+    mkdir -p /usr/share/fex-emu/RootFS
+    ARCH_ROOTFS_URL="https://rootfs.fex-emu.gg/ArchLinux/2026-01-08/ArchLinux.sqsh"
+    ARCH_ROOTFS_SHA256="cb059973b7953ad9165845529655189b96f9a174b14a6a149c87ec884b0c5e90"
+    curl --retry 3 --retry-delay 2 -fsSL -o /usr/share/fex-emu/RootFS/ArchLinux.sqsh "${ARCH_ROOTFS_URL}"
+    echo "${ARCH_ROOTFS_SHA256}  /usr/share/fex-emu/RootFS/ArchLinux.sqsh" | sha256sum -c -
 
-# /usr/share config stays user-overridable; ~/.fex-emu would mask it.
-cat > /usr/share/fex-emu/Config.json <<'EOF'
+    # /usr/share config stays user-overridable; ~/.fex-emu would mask it.
+    cat > /usr/share/fex-emu/Config.json <<'EOF'
 {
   "Config": {
     "RootFS": "ArchLinux.sqsh",
@@ -92,6 +108,7 @@ cat > /usr/share/fex-emu/Config.json <<'EOF'
   }
 }
 EOF
+fi
 
 # Bypass Terra's i686-only steam dependency; armada launches native ARM Steam.
 mkdir -p /tmp/gss-rpm
@@ -138,6 +155,8 @@ rm -f "/tmp/${PROTON_TAR}" "/tmp/${PROTON_ARCHIVE_NAME}.sha512sum"
 # user.component xattr) so a system_files change doesn't re-pull them every OTA.
 python3 -c 'import os,sys; os.setxattr(sys.argv[1],"user.component",b"steam")' "${STEAM_HOME}"
 python3 -c 'import os,sys; os.setxattr(sys.argv[1],"user.component",b"proton")' "${PROTON_DIR}/${PROTON_TOOL_NAME}"
-python3 -c 'import os,sys; os.setxattr(sys.argv[1],"user.component",b"fex-rootfs")' /usr/share/fex-emu/RootFS
+if [[ -d /usr/share/fex-emu/RootFS ]]; then
+    python3 -c 'import os,sys; os.setxattr(sys.argv[1],"user.component",b"fex-rootfs")' /usr/share/fex-emu/RootFS
+fi
 
 echo "Pre-staged: ARM64 Steam bootstrap + CachyOS Proton 11 ${PROTON_VER}"

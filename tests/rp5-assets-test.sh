@@ -36,6 +36,11 @@ done
 grep -Fq 'COPY system_files /system_files/' "${root}/Containerfile"
 grep -Fq 'cp -a /ctx/system_files/. /' "${root}/build_files/40-vendor-system-files.sh"
 grep -Fq 'sm8250-retroidpocket-rp5.dtb' "${root}/build_files/20-install-kernel.sh"
+grep -Fq 'ARMADA_CPU_PROFILE=${ARMADA_CPU_PROFILE:-default}' "${root}/Justfile"
+grep -Fq 'ARMADA_CPU_PROFILE:-default}" == sm8250' "${root}/build_files/30-install-steam-session.sh"
+grep -Fq 'ARMADA_CPU_PROFILE:-default}" != sm8250' "${root}/build_files/70-cleanup.sh"
+grep -Fq 'ARMADA_CPU_PROFILE:-default}" == sm8250' \
+    "${root}/system_files/etc/gamescope-session-plus/sessions.d/steam"
 
 test -f "${root}/system_files/usr/lib/udev/rules.d/99-retroid-pocket.rules"
 grep -Fq 'capability_map_id: retroid_mcu' \

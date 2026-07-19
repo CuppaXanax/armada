@@ -1,3 +1,9 @@
 *.sh text eol=lf
 *.sh.template text eol=lf
 /system_files/usr/libexec/armada/device-env text eol=lf
+/system_files/usr/lib/armada/supported-dtbs text eol=lf
+/system_files/usr/lib/armada/firmware-sm8250.list text eol=lf
+/system_files/usr/lib/armada/devices/retroid-pocket-5.conf text eol=lf
+/system_files/usr/lib/udev/rules.d/99-retroid-pocket.rules text eol=lf
+/system_files/usr/share/alsa/ucm2/** text eol=lf
+/system_files/usr/share/inputplumber/** text eol=lf
