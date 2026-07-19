@@ -1,0 +1,141 @@
+---
+name: Build Retroid Pocket 5 image
+
+on:
+  push:
+    branches: [retroid-pocket-5-support]
+  workflow_dispatch:
+    inputs:
+      packages_ref:
+        description: "armada-packages Git ref used to build the package set"
+        required: true
+        type: string
+        default: retroid-pocket-5-support
+      package_tag:
+        description: "Exact shared RP5 package tag published by armada-packages/rp5.yml"
+        required: false
+        type: string
+        default: ""
+      abl_version:
+        description: "Published ROCKNIX ABL release"
+        required: true
+        type: string
+        default: v1.1.5
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Maximize build space
+        uses: ublue-os/remove-unwanted-software@cc0becac701cf642c8f0a6613bbdaf5dc36b259e
+        with:
+          remove-codeql: true
+
+      - name: Checkout Armada
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Checkout package sources for provenance
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: ${{ github.repository_owner }}/armada-packages
+          ref: ${{ inputs.packages_ref || github.ref_name }}
+          path: armada-packages-source
+
+      - name: Install dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            containernetworking-plugins curl jq pigz podman python3
+
+      - name: Check build recipes
+        uses: ublue-os/just-action@30ab4659369934b65b655bf8d2fa4ddd6547d384
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Resolve RP5 package set
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ inputs.package_tag }}
+        run: |
+          set -euxo pipefail
+          if [[ -z "${TAG}" ]]; then
+            package_sha=$(git -C armada-packages-source rev-parse HEAD)
+            TAG="rp5-${package_sha}"
+          fi
+          echo "Using immutable RP5 package tag ${TAG}"
+          owner="${OWNER,,}"
+          for package in kernel mesa gamescope mangohud fex; do
+            ref="ghcr.io/${owner}/armada-packages/${package}:${TAG}"
+            for attempt in {1..30}; do
+              podman pull "${ref}" && break
+              if [[ "${attempt}" -eq 30 ]]; then
+                echo "Timed out waiting for ${ref}" >&2
+                exit 1
+              fi
+              sleep 60
+            done
+            digest=$(podman inspect "${ref}" --format '{{.Digest}}')
+            var=$(echo "${package}" | tr '[:lower:]-' '[:upper:]_')_PKG
+            echo "${var}=ghcr.io/${owner}/armada-packages/${package}@${digest}" >> "${GITHUB_ENV}"
+          done
+
+      - name: Build full RP5 container
+        env:
+          ARMADA_CPU_PROFILE: default
+        run: |
+          set -euxo pipefail
+          version="$(date -u +%Y%m%d).$(git rev-parse --short HEAD)-rp5"
+          sudo podman build \
+            --platform linux/arm64 \
+            --pull=missing \
+            --build-arg "ARMADA_VERSION=${version}" \
+            --build-arg "ARMADA_PACKAGE_CPU_PROFILE=sm8250" \
+            --build-arg "KERNEL_PKG=${KERNEL_PKG}" \
+            --build-arg "MESA_PKG=${MESA_PKG}" \
+            --build-arg "GAMESCOPE_PKG=${GAMESCOPE_PKG}" \
+            --build-arg "MANGOHUD_PKG=${MANGOHUD_PKG}" \
+            --build-arg "FEX_PKG=${FEX_PKG}" \
+            --tag localhost/armada-rp5:latest .
+          sudo podman run --rm localhost/armada-rp5:latest \
+            bash -lc 'rpm -q mesa-vulkan-drivers gamescope mangohud fex-emu-utils; test -s /usr/lib/modules/7.0.11/dtb/qcom/sm8250-retroidpocket-rp5.dtb; test -s /usr/lib/armada/devices/retroid-pocket-5.conf'
+
+      - name: Build and inspect disk image
+        env:
+          ROCKNIX_ABL_VERSION: ${{ inputs.abl_version || 'v1.1.5' }}
+        run: |
+          set -euxo pipefail
+          JUST_BIN=$(command -v just)
+          sudo git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          sudo --preserve-env=ROCKNIX_ABL_VERSION "${JUST_BIN}" \
+            build-armada-image localhost/armada-rp5 latest
+          sudo chown -R "$(id -u):$(id -g)" output
+          image=$(find output -maxdepth 1 -name 'armada-*.img.gz' -type f -print -quit)
+          test -n "${image}"
+          gzip -t "${image}"
+          sha256sum "${image}" > "${image}.sha256"
+          ls -lh "${image}" "${image}.sha256"
+
+      - name: Upload RP5 disk image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: armada-rp5-disk-image
+          path: |
+            output/armada-*.img.gz
+            output/armada-*.img.gz.sha256
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+          overwrite: true

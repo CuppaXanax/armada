@@ -1,5 +1,8 @@
 *.sh text eol=lf
 *.sh.template text eol=lf
+/.gitattributes text eol=lf
+/Containerfile text eol=lf
+/.github/workflows/*.yml text eol=lf
 /system_files/usr/libexec/armada/device-env text eol=lf
 /system_files/usr/lib/armada/supported-dtbs text eol=lf
 /system_files/usr/lib/armada/firmware-sm8250.list text eol=lf

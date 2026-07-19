@@ -1,6 +1,16 @@
 #!/bin/bash
 set -euxo pipefail
 
+if [[ "${ARMADA_PACKAGE_CPU_PROFILE:-default}" != default ]]; then
+    for package in fex mesa mangohud gamescope; do
+        profile_file="/packages/${package}/.armada-cpu-profile"
+        [[ -f "${profile_file}" ]] \
+            || { echo "ERROR: ${package} carrier has no CPU profile marker" >&2; exit 1; }
+        [[ "$(cat "${profile_file}")" == "${ARMADA_PACKAGE_CPU_PROFILE}" ]] \
+            || { echo "ERROR: ${package} carrier CPU profile mismatch" >&2; exit 1; }
+    done
+fi
+
 if [[ "${ARMADA_CPU_PROFILE:-default}" == sm8250 ]]; then
     # The published Armada RPMs require I8MM. Use Fedora's generic ARM64 builds
     # until the SM8250-tuned package set is available.
