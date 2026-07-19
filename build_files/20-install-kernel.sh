@@ -32,7 +32,7 @@ if ! compgen -G '/usr/lib/firmware/qcom/sm8250/slpi*' >/dev/null; then
     shopt -u nullglob
 fi
 
-while IFS= read -r pattern; do
+while IFS= read -r pattern || [[ -n "${pattern}" ]]; do
     case "${pattern}" in ''|'#'*) continue ;; esac
     compgen -G "/usr/lib/firmware/${pattern}" >/dev/null \
         || { echo "ERROR: RP5 firmware missing: ${pattern}"; exit 1; }
