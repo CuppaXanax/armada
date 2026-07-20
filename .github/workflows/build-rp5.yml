@@ -65,6 +65,7 @@ jobs:
           sudo install -d -m 0700 /root/.config/containers
           echo '{}' | sudo tee /root/.config/containers/auth.json >/dev/null
           sudo chmod 0600 /root/.config/containers/auth.json
+          podman pull --help | grep -q -- '--authfile'
 
       - name: Resolve RP5 package set
         env:
@@ -80,7 +81,8 @@ jobs:
           owner="${OWNER,,}"
           for package in kernel mesa gamescope mangohud fex; do
             ref="ghcr.io/${owner}/armada-packages/${package}:${TAG}"
-            sudo podman --authfile /root/.config/containers/auth.json pull "${ref}"
+            sudo env REGISTRY_AUTH_FILE=/root/.config/containers/auth.json \
+              podman pull "${ref}"
             digest=$(sudo podman inspect "${ref}" --format '{{.Digest}}')
             var=$(echo "${package}" | tr '[:lower:]-' '[:upper:]_')_PKG
             echo "${var}=ghcr.io/${owner}/armada-packages/${package}@${digest}" >> "${GITHUB_ENV}"
