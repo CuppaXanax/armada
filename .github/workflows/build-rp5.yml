@@ -60,10 +60,11 @@ jobs:
       - name: Check build recipes
         uses: ublue-os/just-action@30ab4659369934b65b655bf8d2fa4ddd6547d384
 
-      - name: Log in to GHCR
+      - name: Prepare isolated container authentication
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          sudo install -d -m 0700 /root/.config/containers
+          echo '{}' | sudo tee /root/.config/containers/auth.json >/dev/null
+          sudo chmod 0600 /root/.config/containers/auth.json
 
       - name: Resolve RP5 package set
         env:
@@ -79,15 +80,8 @@ jobs:
           owner="${OWNER,,}"
           for package in kernel mesa gamescope mangohud fex; do
             ref="ghcr.io/${owner}/armada-packages/${package}:${TAG}"
-            for attempt in {1..30}; do
-              podman pull "${ref}" && break
-              if [[ "${attempt}" -eq 30 ]]; then
-                echo "Timed out waiting for ${ref}" >&2
-                exit 1
-              fi
-              sleep 60
-            done
-            digest=$(podman inspect "${ref}" --format '{{.Digest}}')
+            sudo podman --authfile /root/.config/containers/auth.json pull "${ref}"
+            digest=$(sudo podman inspect "${ref}" --format '{{.Digest}}')
             var=$(echo "${package}" | tr '[:lower:]-' '[:upper:]_')_PKG
             echo "${var}=ghcr.io/${owner}/armada-packages/${package}@${digest}" >> "${GITHUB_ENV}"
           done
