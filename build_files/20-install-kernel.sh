@@ -22,21 +22,7 @@ RP5_DTB="/usr/lib/modules/${KVER}/dtb/qcom/sm8250-retroidpocket-rp5.dtb"
 mkdir -p /usr/lib/firmware
 cp -a /ctx/system_files/usr/lib/firmware/. /usr/lib/firmware/
 
-# Fedora keeps the SM8250 SLPI files in the linux-firmware vendor subdirectory;
-# ROCKNIX flattens them because the RP5 DT expects qcom/sm8250/slpi*.mbn.
-if ! compgen -G '/usr/lib/firmware/qcom/sm8250/slpi*' >/dev/null; then
-    shopt -s nullglob
-    slpi_files=(/usr/lib/firmware/qcom/sm8250/Thundercomm/RB5/slpi*)
-    [ "${#slpi_files[@]}" -gt 0 ] || { echo "ERROR: SM8250 SLPI firmware is missing"; exit 1; }
-    cp -L "${slpi_files[@]}" /usr/lib/firmware/qcom/sm8250/
-    shopt -u nullglob
-fi
-
-while IFS= read -r pattern || [[ -n "${pattern}" ]]; do
-    case "${pattern}" in ''|'#'*) continue ;; esac
-    compgen -G "/usr/lib/firmware/${pattern}" >/dev/null \
-        || { echo "ERROR: RP5 firmware missing: ${pattern}"; exit 1; }
-done < /ctx/system_files/usr/lib/armada/firmware-sm8250.list
+bash /ctx/build_files/normalize-sm8250-firmware.sh
 
 # Plymouth theme must exist before dracut bakes the splash into initramfs.
 mkdir -p /usr/share/plymouth/themes
