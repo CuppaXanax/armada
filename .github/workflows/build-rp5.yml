@@ -21,6 +21,11 @@ on:
         required: true
         type: string
         default: v1.1.5
+      boot_debug:
+        description: "Enable verbose kernel and systemd output in the test image"
+        required: true
+        type: boolean
+        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -111,11 +116,13 @@ jobs:
       - name: Build and inspect disk image
         env:
           ROCKNIX_ABL_VERSION: ${{ inputs.abl_version || 'v1.1.5' }}
+          ARMADA_BOOT_DTB: sm8250-retroidpocket-rp5
+          ARMADA_BOOT_DEBUG: ${{ (github.event_name == 'push' || inputs.boot_debug) && '1' || '0' }}
         run: |
           set -euxo pipefail
           JUST_BIN=$(command -v just)
           sudo git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-          sudo --preserve-env=ROCKNIX_ABL_VERSION "${JUST_BIN}" \
+          sudo --preserve-env=ROCKNIX_ABL_VERSION,ARMADA_BOOT_DTB,ARMADA_BOOT_DEBUG "${JUST_BIN}" \
             build-armada-image localhost/armada-rp5 latest
           sudo chown -R "$(id -u):$(id -g)" output
           image=$(find output -maxdepth 1 -name 'armada-*.img.gz' -type f -print -quit)

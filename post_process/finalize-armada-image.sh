@@ -62,8 +62,10 @@ for soc in SM8250 SM8550 SM8650 SM8750; do
     sudo chmod 0755 "$d"/*.sh
 done
 
-# Disable GRUB so ABL falls through to /KERNEL.
-if [ -d "${WORK}/mnt/EFI" ]; then sudo mv "${WORK}/mnt/EFI" "${WORK}/mnt/EFI.disabled"; fi
+# ROCKNIX ABL loads the standard removable-media path first. Keep the EFI tree
+# in place; BOOTAA64.EFI then selects the image's Fedora boot configuration.
+sudo test -s "${WORK}/mnt/EFI/BOOT/BOOTAA64.EFI" \
+    || { echo "ERROR: EFI/BOOT/BOOTAA64.EFI is missing"; exit 1; }
 sudo sync
 sudo umount "${WORK}/mnt"
 

@@ -5,6 +5,8 @@ set -euxo pipefail
 RAW="${1:-output/image/disk.raw}"
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MKBOOTIMG="${MKBOOTIMG:-}"
+ARMADA_BOOT_DTB="${ARMADA_BOOT_DTB:-}"
+ARMADA_BOOT_DEBUG="${ARMADA_BOOT_DEBUG:-0}"
 
 # Single sources shared with the on-device regen (armada-bootimg-update).
 ARMADA_LIB="${SCRIPT_DIR}/../system_files/usr/lib/armada"
@@ -29,16 +31,40 @@ fi
 
 sudo mount "${LOOP}p2" "${WORK}/p2"          # /boot
 
-DEPLOY=$(sudo ls "${WORK}/p2/ostree" | grep '^default-' | head -1)
-BOOTDIR="${WORK}/p2/ostree/${DEPLOY}"
-KVER=$(basename "$(sudo ls "${BOOTDIR}"/vmlinuz-* | head -1)" | sed 's/^vmlinuz-//')
 # Read the raw entry lines (matching armada-bootimg-update) so the stamp we write
 # matches what it computes — a fresh install then skips first-boot regeneration.
-BLS=$(sudo ls "${WORK}/p2"/loader*/entries/*.conf | head -1)
+BLS=$(armada_default_bls_entry "${WORK}/p2")
+[[ -n "${BLS}" ]] || { echo "ERROR: no BLS entry found"; exit 1; }
 LINUX_LINE=$(sudo sed -n 's/^linux //p' "${BLS}" | head -1)
 INITRD_LINE=$(sudo sed -n 's/^initrd //p' "${BLS}" | head -1)
 OPTIONS_LINE=$(sudo sed -n 's/^options //p' "${BLS}" | head -1)
-STAMP_ID=$(armada_bootimg_id "${LINUX_LINE}" "${INITRD_LINE}" "${OPTIONS_LINE}" "${DTB_LIST}" "${ARMADA_LIB}/bootimg-args")
+FDTDIR=$(sudo sed -n 's/^fdtdir //p' "${BLS}" | head -1)
+[[ "${LINUX_LINE}" == /boot/* ]] || { echo "ERROR: unsupported BLS linux path: ${LINUX_LINE}"; exit 1; }
+BOOTDIR=$(dirname "${WORK}/p2${LINUX_LINE#/boot}")
+KVER=${LINUX_LINE##*/vmlinuz-}
+OPTIONS_LINE=$(armada_normalize_rootflags "${OPTIONS_LINE}")
+
+if [[ -n "${ARMADA_BOOT_DTB}" ]]; then
+    grep -Fxq "${ARMADA_BOOT_DTB}" "${DTB_LIST}" \
+        || { echo "ERROR: unsupported ARMADA_BOOT_DTB: ${ARMADA_BOOT_DTB}"; exit 1; }
+    [[ "${FDTDIR}" == /boot/* ]] || { echo "ERROR: unsupported BLS fdtdir: ${FDTDIR}"; exit 1; }
+    SELECTED_DTB="${FDTDIR}/qcom/${ARMADA_BOOT_DTB}.dtb"
+    sudo test -s "${WORK}/p2${SELECTED_DTB#/boot}" \
+        || { echo "ERROR: selected BLS DTB is missing: ${SELECTED_DTB}"; exit 1; }
+    sudo sed -i \
+        "s|^fdtdir .*|devicetree ${SELECTED_DTB}|" "${BLS}"
+fi
+DTB_SPEC=$(sudo sed -n -e 's/^devicetree //p' -e 's/^fdtdir //p' "${BLS}" | head -1)
+if [[ "${ARMADA_BOOT_DEBUG}" == 1 ]]; then
+    DEBUG_OPTIONS=""
+    for _token in ${OPTIONS_LINE}; do
+        case "${_token}" in rhgb|quiet|loglevel=*) continue ;; esac
+        DEBUG_OPTIONS="${DEBUG_OPTIONS} ${_token}"
+    done
+    OPTIONS_LINE="${DEBUG_OPTIONS# } loglevel=7 systemd.show_status=1"
+fi
+sudo sed -i "s|^options .*|options ${OPTIONS_LINE}|" "${BLS}"
+STAMP_ID=$(armada_bootimg_id "${LINUX_LINE}" "${INITRD_LINE}" "${OPTIONS_LINE}" "${DTB_LIST}" "${ARMADA_LIB}/bootimg-args" "${DTB_SPEC}")
 CMDLINE="${OPTIONS_LINE}"
 
 # Fit the 512-byte cmdline: drop serial console, ostree= first, keep splash kargs.
@@ -58,7 +84,8 @@ fi
 sudo cat "${BOOTDIR}/vmlinuz-${KVER}" > "${WORK}/vmlinuz"
 sudo cat "${BOOTDIR}/initramfs-${KVER}.img" > "${WORK}/initramfs"
 gzip -c "${WORK}/vmlinuz" > "${WORK}/kernel.gz"
-for _name in ${SUPPORTED_DTBS}; do
+DTBS_TO_STAGE="${ARMADA_BOOT_DTB:-${SUPPORTED_DTBS}}"
+for _name in ${DTBS_TO_STAGE}; do
     _dtb="${BOOTDIR}/dtb/qcom/${_name}.dtb"
     sudo test -f "${_dtb}" || { echo "ERROR: supported DTB missing: ${_dtb}"; exit 1; }
     sudo cat "${_dtb}" >> "${WORK}/kernel.gz"
@@ -76,5 +103,5 @@ printf '%s' "${STAMP_ID}" | sudo tee "${WORK}/p1/.armada-bootimg.id" >/dev/null
 sudo sync
 
 echo "Staged /KERNEL ($(du -h "${WORK}/KERNEL" | cut -f1)) on the FAT partition of ${RAW}"
-echo "deploy=${DEPLOY} kver=${KVER}"
+echo "bls=${BLS} kver=${KVER}"
 echo "cmdline=${CMDLINE}"
